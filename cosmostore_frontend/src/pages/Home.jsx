@@ -22,12 +22,12 @@ import Pagination from "../components/Pagination";
 import { PageSpinner } from "../components/ui";
 import { resolveImage } from "../utils/image";
 
-import foundationImg from "../assets/foundation.jpg";
-import concealerImg from "../assets/concealer.jpg";
-import blushImg from "../assets/blush.jpg";
-import mascaraImg from "../assets/mascara.jpg";
-import skincareImg from "../assets/skincare.jpg";
-import lipstickImg from "../assets/lipstick.jpg";
+import foundationImg from "../assets/Foundation.jpg";
+import concealerImg from "../assets/Concealer.jpg";
+import blushImg from "../assets/Blush.jpg";
+import mascaraImg from "../assets/Mascara.jpg";
+import skincareImg from "../assets/Skincare.jpg";
+import lipstickImg from "../assets/Lipstick.jpg";
 
 
 const CATEGORY_IMAGES = {
