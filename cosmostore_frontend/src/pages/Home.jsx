@@ -133,7 +133,7 @@ export default function Home() {
           >
             {sidePhoto && (
               <img
-                src="https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcT3TjcbFatYFjCocUmDg2IqdYsO9riJx07qCIqMguiJLAeJJaCfh_oVFZek&s=10"
+                src="https://garancia-beauty.com/cdn/shop/articles/bienfaits_des_serums-6086147_79c542e9-bf3c-46db-9184-2abdaf4a3b78.png?v=1784551112"
                 alt=""
                 className="absolute inset-0 w-full h-full object-cover opacity-90 transition-transform duration-700 group-hover:scale-105"
               />
