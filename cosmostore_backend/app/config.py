@@ -232,18 +232,6 @@ class Config:
         )
     )
 
-    # Rule-based fraud checks that run alongside the ML model
-    # (see app/ml/risk_rules.py). Every value can be tuned from the
-    # environment (e.g. in the Render dashboard) without a code change.
-    FRAUD_HIGH_VALUE_PKR = float(os.environ.get("FRAUD_HIGH_VALUE_PKR", 25000))
-    FRAUD_NEW_ACCOUNT_DAYS = int(os.environ.get("FRAUD_NEW_ACCOUNT_DAYS", 3))
-    FRAUD_NEW_ACCOUNT_AMOUNT_PKR = float(os.environ.get("FRAUD_NEW_ACCOUNT_AMOUNT_PKR", 15000))
-    FRAUD_COD_AMOUNT_PKR = float(os.environ.get("FRAUD_COD_AMOUNT_PKR", 10000))
-    FRAUD_COD_ACCOUNT_DAYS = int(os.environ.get("FRAUD_COD_ACCOUNT_DAYS", 7))
-    FRAUD_VELOCITY_ORDERS_24H = int(os.environ.get("FRAUD_VELOCITY_ORDERS_24H", 3))
-    FRAUD_REPEAT_FLAG_LIMIT = int(os.environ.get("FRAUD_REPEAT_FLAG_LIMIT", 2))
-    FRAUD_FAILED_LOGINS = int(os.environ.get("FRAUD_FAILED_LOGINS", 3))
-
 
     # ==================================================
     # PAYMENT GATEWAYS
