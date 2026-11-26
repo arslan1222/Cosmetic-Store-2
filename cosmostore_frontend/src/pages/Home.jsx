@@ -22,13 +22,21 @@ import Pagination from "../components/Pagination";
 import { PageSpinner } from "../components/ui";
 import { resolveImage } from "../utils/image";
 
-const CATEGORY_ICONS = {
-  Foundation: Palette,
-  Lipstick: Brush,
-  Concealer: Sparkles,
-  Blush: Flower2,
-  Mascara: Eye,
-  Skincare: Droplets,
+import foundationImg from "../assets/foundation.jpg";
+import concealerImg from "../assets/concealer.jpg";
+import blushImg from "../assets/blush.jpg";
+import mascaraImg from "../assets/mascara.jpg";
+import skincareImg from "../assets/skincare.jpg";
+import lipstickImg from "../assets/lipstick.jpg";
+
+
+const CATEGORY_IMAGES = {
+  Foundation: foundationImg,
+  Lipstick: lipstickImg,
+  Concealer: concealerImg,
+  Blush: blushImg,
+  Mascara: mascaraImg,
+  Skincare: skincareImg,
 };
 
 const PER_PAGE = 8;
@@ -133,7 +141,7 @@ export default function Home() {
           >
             {sidePhoto && (
               <img
-                src="https://garancia-beauty.com/cdn/shop/articles/bienfaits_des_serums-6086147_79c542e9-bf3c-46db-9184-2abdaf4a3b78.png?v=1784551112"
+                src="https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcT3TjcbFatYFjCocUmDg2IqdYsO9riJx07qCIqMguiJLAeJJaCfh_oVFZek&s=10"
                 alt=""
                 className="absolute inset-0 w-full h-full object-cover opacity-90 transition-transform duration-700 group-hover:scale-105"
               />
@@ -160,25 +168,41 @@ export default function Home() {
       {/* Quick category links                                                */}
       {/* ------------------------------------------------------------------ */}
       {categories.length > 0 && (
-        <section className="max-w-7xl mx-auto px-4 sm:px-6 pt-12">
-          <div className="flex gap-5 sm:gap-8 overflow-x-auto scrollbar-hide justify-start lg:justify-center pb-2">
-            {categories.map((c) => {
-              const Icon = CATEGORY_ICONS[c.name] || Sparkles;
-              return (
-                <Link
-                  key={c.id}
-                  to={`/shop?category_id=${c.id}`}
-                  className="group flex flex-col items-center gap-3 shrink-0 w-24"
-                >
-                  <span className="w-[88px] h-[88px] rounded-full bg-petal flex items-center justify-center transition-colors group-hover:bg-ink">
-                    <Icon size={30} className="text-berry-500 transition-colors group-hover:text-white" />
-                  </span>
-                  <span className="text-sm font-medium text-center">{c.name}</span>
-                </Link>
-              );
-            })}
-          </div>
-        </section>
+        
+          <section className="max-w-7xl mx-auto px-4 sm:px-6 pt-12">
+            <div className="flex gap-5 sm:gap-8 overflow-x-auto scrollbar-hide justify-start lg:justify-center pb-2">
+              {categories.map((c) => {
+                const categoryImage = CATEGORY_IMAGES[c.name];
+
+                return (
+                  <Link
+                    key={c.id}
+                    to={`/shop?category_id=${c.id}`}
+                    className="group flex flex-col items-center gap-3 shrink-0 w-24"
+                  >
+                    <div className="w-[88px] h-[88px] rounded-full overflow-hidden bg-petal border border-ink/10">
+                      {categoryImage ? (
+                        <img
+                          src={categoryImage}
+                          alt={c.name}
+                          className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110"
+                        />
+                      ) : (
+                        <div className="w-full h-full flex items-center justify-center">
+                          <Sparkles size={30} className="text-berry-500" />
+                        </div>
+                      )}
+                    </div>
+
+                    <span className="text-sm font-medium text-center group-hover:text-berry-600 transition-colors">
+                      {c.name}
+                    </span>
+                  </Link>
+                );
+              })}
+            </div>
+          </section>
+
       )}
 
       {/* ------------------------------------------------------------------ */}
