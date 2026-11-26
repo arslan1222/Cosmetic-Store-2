@@ -133,7 +133,7 @@ export default function Home() {
           >
             {sidePhoto && (
               <img
-                src={sidePhoto}
+                src="https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcT3TjcbFatYFjCocUmDg2IqdYsO9riJx07qCIqMguiJLAeJJaCfh_oVFZek&s=10"
                 alt=""
                 className="absolute inset-0 w-full h-full object-cover opacity-90 transition-transform duration-700 group-hover:scale-105"
               />
