@@ -11,10 +11,12 @@ import {
   Store,
   ChevronDown,
   ArrowRight,
+  Heart,
 } from "lucide-react";
 
 import { useAuth } from "../context/AuthContext";
 import { useCart } from "../context/CartContext";
+import { useWishlist } from "../context/WishlistContext";
 import { catalogApi } from "../api/endpoints";
 import heroImage from "../assets/hero.png";
 import NotificationBell from "./NotificationBell";
@@ -36,6 +38,7 @@ function Logo({ to }) {
 export default function Navbar() {
   const { user, logout } = useAuth();
   const { itemCount, openCart } = useCart();
+  const wishlist = useWishlist();
   const navigate = useNavigate();
   const location = useLocation();
 
@@ -122,6 +125,11 @@ export default function Navbar() {
                 {user.role === "vendor" ? <Store size={15} /> : <LayoutDashboard size={15} />}
                 {user.role === "customer" ? "My orders" : "Dashboard"}
               </Link>
+              {user.role === "customer" && (
+                <Link to="/account/wishlist" className="flex items-center gap-2.5 px-4 py-2.5 hover:bg-cream">
+                  <Heart size={15} /> Wishlist
+                </Link>
+              )}
               <Link to="/account/profile" className="flex items-center gap-2.5 px-4 py-2.5 hover:bg-cream">
                 <User size={15} /> Profile
               </Link>
@@ -236,6 +244,18 @@ export default function Navbar() {
               <Search size={21} />
             </button>
             <NotificationBell />
+            <Link
+              to="/account/wishlist"
+              aria-label={`Wishlist, ${wishlist?.count || 0} saved items`}
+              className="relative hidden sm:block p-2 text-ink/80 hover:text-berry-500 transition-colors"
+            >
+              <Heart size={21} />
+              {wishlist?.count > 0 && (
+                <span className="absolute top-0 right-0 bg-berry-500 text-white text-[10px] font-bold rounded-full h-4 min-w-[16px] px-1 flex items-center justify-center">
+                  {wishlist.count}
+                </span>
+              )}
+            </Link>
             {accountMenu}
             <button
               type="button"

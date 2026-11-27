@@ -70,6 +70,24 @@ def delete_category(category_id):
 
 
 # ------------------------------------------------------------------ Products
+@products_bp.route("/products/brands", methods=["GET"])
+def list_brands():
+    """Brands with at least one product on sale, for the shop's brand filter."""
+    rows = (
+        db.session.query(Product.brand, db.func.count(Product.id))
+        .filter(
+            Product.is_active.is_(True),
+            Product.brand.isnot(None),
+            Product.brand != "",
+            Product.store.has(Store.status == StoreStatusEnum.APPROVED),
+        )
+        .group_by(Product.brand)
+        .order_by(Product.brand)
+        .all()
+    )
+    return api_response(True, data=[{"name": b, "count": c} for b, c in rows])
+
+
 @products_bp.route("/products", methods=["GET"])
 def list_products():
     # Products from stores that are pending, rejected or suspended never show up publicly.
@@ -197,6 +215,8 @@ def create_product():
         name=name,
         brand=data.get("brand"),
         description=data.get("description"),
+        ingredients=(data.get("ingredients") or None),
+        how_to_use=(data.get("how_to_use") or None),
         price=price_val,
         discount_percent=data.get("discount_percent", 0),
         stock_quantity=data.get("stock_quantity", 0),
@@ -220,7 +240,7 @@ def update_product(product_id):
             return api_response(False, "You can only edit your own products.", status=403)
 
     data = request.get_json(force=True, silent=True) or {}
-    for field in ("name", "brand", "description", "stock_quantity", "discount_percent", "image_url", "is_active"):
+    for field in ("name", "brand", "description", "ingredients", "how_to_use", "stock_quantity", "discount_percent", "image_url", "is_active"):
         if field in data:
             setattr(product, field, data[field])
     if "price" in data:

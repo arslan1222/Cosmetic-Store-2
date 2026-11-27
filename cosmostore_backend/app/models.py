@@ -206,6 +206,8 @@ class Product(db.Model):
     name = db.Column(db.String(150), nullable=False)
     brand = db.Column(db.String(100), nullable=True)
     description = db.Column(db.Text, nullable=True)
+    ingredients = db.Column(db.Text, nullable=True)   # shown on the product page
+    how_to_use = db.Column(db.Text, nullable=True)    # usage instructions
     price = db.Column(db.Numeric(10, 2), nullable=False)      # PKR
     discount_percent = db.Column(db.Float, default=0.0)
     stock_quantity = db.Column(db.Integer, default=0)
@@ -247,6 +249,8 @@ class Product(db.Model):
             "name": self.name,
             "brand": self.brand,
             "description": self.description,
+            "ingredients": self.ingredients,
+            "how_to_use": self.how_to_use,
             "price": float(self.price),
             "discount_percent": self.discount_percent,
             "final_price": self.final_price,
@@ -305,6 +309,20 @@ class Review(db.Model):
 # --------------------------------------------------------------------------
 # Cart
 # --------------------------------------------------------------------------
+class WishlistItem(db.Model):
+    """A product a customer has saved for later ("saved items" in the proposal)."""
+    __tablename__ = "wishlist_items"
+
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=False, index=True)
+    product_id = db.Column(db.Integer, db.ForeignKey("products.id"), nullable=False)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    product = db.relationship("Product")
+
+    __table_args__ = (db.UniqueConstraint("user_id", "product_id", name="uq_user_product_wishlist"),)
+
+
 class CartItem(db.Model):
     __tablename__ = "cart_items"
 
@@ -417,7 +435,7 @@ class OrderItem(db.Model):
 class PaymentTransaction(db.Model):
     """
     A record of one attempt to pay through an external gateway
-    (JazzCash / Easypaisa / card-via-Stripe), created at 'initiate' and
+    (JazzCash / Easypaisa / card-via-Safepay), created at 'initiate' and
     updated at 'verify'. Checkout requires a transaction row here with
     status SUCCESS, owned by the current user, with a matching amount,
     not already attached to an order (order_id is NULL) -- this is what

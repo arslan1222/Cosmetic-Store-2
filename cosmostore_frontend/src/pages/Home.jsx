@@ -27,7 +27,7 @@ import concealerImg from "../assets/Concealer.jpg";
 import blushImg from "../assets/Blush.jpg";
 import mascaraImg from "../assets/Mascara.jpg";
 import skincareImg from "../assets/Skincare.jpg";
-import lipstickImg from "../assets/Lipstick.jpg";
+import lipstickImg from "../assets/lipstick.jpg";
 
 
 const CATEGORY_IMAGES = {

@@ -1,12 +1,14 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
-import { Plus, Loader2 } from "lucide-react";
+import { Plus, Loader2, Heart, Eye } from "lucide-react";
 import { formatPKR } from "../utils/format";
 import { resolveImage } from "../utils/image";
 import { useCart } from "../context/CartContext";
 import { useAuth } from "../context/AuthContext";
 import { useToast } from "../context/ToastContext";
 import { Rating } from "./ui";
+import { useWishlist } from "../context/WishlistContext";
+import QuickView from "./QuickView";
 
 // Soft tile colours so the catalog still looks curated before real photography is uploaded.
 const TILES = ["bg-petal", "bg-sage", "bg-[#F3E3D6]", "bg-[#E9E4EE]"];
@@ -22,6 +24,10 @@ export default function ProductCard({ product, className = "" }) {
   const { user } = useAuth();
   const toast = useToast();
   const [adding, setAdding] = useState(false);
+  const [quickView, setQuickView] = useState(false);
+  const wishlist = useWishlist();
+  // Image rollover: show the second gallery photo while hovering (Nexus "image rollover")
+  const hoverImage = resolveImage(product.images?.[1]?.image_url);
 
   const quickAdd = async () => {
     if (!user) {
@@ -48,7 +54,7 @@ export default function ProductCard({ product, className = "" }) {
               src={image}
               alt={product.name}
               loading="lazy"
-              className="w-full h-full object-cover transition-transform duration-700 ease-out group-hover:scale-[1.04]"
+              className={`w-full h-full object-cover transition-all duration-700 ease-out group-hover:scale-[1.04] ${hoverImage ? "group-hover:opacity-0" : ""}`}
             />
           ) : (
             <span className="w-full h-full flex items-center justify-center font-display text-6xl text-ink/15">
@@ -56,6 +62,39 @@ export default function ProductCard({ product, className = "" }) {
             </span>
           )}
         </Link>
+
+        {hoverImage && (
+          <img
+            src={hoverImage}
+            alt=""
+            loading="lazy"
+            aria-hidden="true"
+            className="absolute inset-0 w-full h-full object-cover opacity-0 group-hover:opacity-100 transition-opacity duration-700 pointer-events-none"
+          />
+        )}
+
+        {/* Wishlist + quick view */}
+        <div className="absolute top-3 right-3 z-10 flex flex-col gap-2">
+          {(
+            <button
+              type="button"
+              onClick={() => wishlist?.toggle(product.id)}
+              aria-label={wishlist?.has(product.id) ? `Remove ${product.name} from wishlist` : `Save ${product.name} to wishlist`}
+              aria-pressed={!!wishlist?.has(product.id)}
+              className="w-9 h-9 rounded-full bg-white/90 flex items-center justify-center shadow-soft hover:bg-white transition-colors"
+            >
+              <Heart size={16} className={wishlist?.has(product.id) ? "fill-berry-500 text-berry-500" : "text-ink/70"} />
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={() => setQuickView(true)}
+            aria-label={`Quick view ${product.name}`}
+            className="hidden lg:flex w-9 h-9 rounded-full bg-white/90 items-center justify-center shadow-soft hover:bg-white transition-all opacity-0 group-hover:opacity-100 focus-visible:opacity-100"
+          >
+            <Eye size={16} className="text-ink/70" />
+          </button>
+        </div>
 
         <div className="absolute top-3 left-3 flex flex-col items-start gap-1.5 pointer-events-none">
           {hasDiscount && (
@@ -89,6 +128,8 @@ export default function ProductCard({ product, className = "" }) {
           </button>
         )}
       </div>
+
+      {quickView && <QuickView product={product} onClose={() => setQuickView(false)} />}
 
       <Link to={href} className="block">
         <p className="text-xs text-ink/55 mb-0.5 truncate">{product.brand || product.store_name}</p>

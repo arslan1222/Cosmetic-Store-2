@@ -1,6 +1,6 @@
 """
 Shared helpers used by every payment gateway module (jazzcash.py,
-easypaisa.py, card_stripe.py). Kept gateway-agnostic on purpose so the
+easypaisa.py, card_pk.py). Kept gateway-agnostic on purpose so the
 checkout/payments routes never have to special-case a specific provider's
 quirks outside of its own module.
 """

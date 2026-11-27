@@ -15,11 +15,12 @@ const CartContext = createContext(null);
 
 export function CartProvider({ children }) {
 
-  const { user } = useAuth();
+  const { user, loading: authLoading } = useAuth();
 
   const [items, setItems] = useState([]);
   const [subtotal, setSubtotal] = useState(0);
   const [loading, setLoading] = useState(false);
+  const [loaded, setLoaded] = useState(false); // true once the first cart fetch has finished
   const [isOpen, setIsOpen] = useState(false);
   const openCart = () => setIsOpen(true);
   const closeCart = () => setIsOpen(false);
@@ -34,6 +35,9 @@ export function CartProvider({ children }) {
     if (!user) {
       setItems([]);
       setSubtotal(0);
+      // Not logged in *yet* (session still being restored on a full page load) is
+      // different from genuinely logged out: only the latter means "loaded, and empty".
+      setLoaded(!authLoading);
       return;
     }
 
@@ -56,10 +60,11 @@ export function CartProvider({ children }) {
     } finally {
 
       setLoading(false);
+      setLoaded(true);
 
     }
 
-  }, [user]);
+  }, [user, authLoading]);
 
 
   // ============================================================
@@ -143,6 +148,7 @@ export function CartProvider({ children }) {
         subtotal,
         itemCount,
         loading,
+        loaded,
         isOpen,
         openCart,
         closeCart,

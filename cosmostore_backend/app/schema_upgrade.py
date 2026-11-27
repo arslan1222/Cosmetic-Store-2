@@ -16,6 +16,8 @@ COLUMN_ADDITIONS = [
     ("fraud_checks", "risk_factors", "TEXT NULL"),
     ("fraud_checks", "risk_level", "VARCHAR(10) NULL"),
     ("fraud_checks", "flag_source", "VARCHAR(20) NULL"),
+    ("products", "ingredients", "TEXT NULL"),
+    ("products", "how_to_use", "TEXT NULL"),
 ]
 
 STORE_STATUS_ENUM = "ENUM('PENDING','APPROVED','REJECTED','SUSPENDED') NOT NULL"

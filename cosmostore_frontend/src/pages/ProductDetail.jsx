@@ -1,12 +1,14 @@
 import { useEffect, useState } from "react";
 import { useParams, Link, useNavigate } from "react-router-dom";
-import { Minus, Plus, ShoppingBag, Store, ChevronDown, ShieldCheck, Truck, Wallet } from "lucide-react";
+import { Minus, Plus, ShoppingBag, Store, ChevronDown, ShieldCheck, Truck, Wallet, Heart } from "lucide-react";
 import { catalogApi } from "../api/endpoints";
 import { useCart } from "../context/CartContext";
 import { useAuth } from "../context/AuthContext";
 import { useToast } from "../context/ToastContext";
 import { formatPKR, formatDate } from "../utils/format";
-import { resolveImage, FREE_SHIPPING_THRESHOLD, SHIPPING_FEE } from "../utils/image";
+import { resolveImage } from "../utils/image";
+import usePricing from "../hooks/usePricing";
+import { useWishlist } from "../context/WishlistContext";
 import { PageSpinner, Button, TextArea, Breadcrumbs, Rating } from "../components/ui";
 import ProductCard from "../components/ProductCard";
 
@@ -53,6 +55,8 @@ export default function ProductDetail() {
   const [related, setRelated] = useState([]);
   const [recent, setRecent] = useState([]);
 
+  const pricingRules = usePricing();
+  const wishlist = useWishlist();
   const { addToCart, openCart } = useCart();
   const { user } = useAuth();
   const toast = useToast();
@@ -277,6 +281,14 @@ export default function ProductDetail() {
                   Buy it now
                 </Button>
               </div>
+              <button
+                type="button"
+                onClick={() => wishlist?.toggle(product.id)}
+                className="hidden lg:inline-flex items-center gap-2 text-sm font-medium text-ink/70 hover:text-berry-600 -mt-4 mb-8"
+              >
+                <Heart size={16} className={wishlist?.has(product.id) ? "fill-berry-500 text-berry-500" : ""} />
+                {wishlist?.has(product.id) ? "Saved to wishlist" : "Save to wishlist"}
+              </button>
             </>
           ) : (
             <p className="text-red-600 font-semibold mb-8">Currently sold out</p>
@@ -285,8 +297,8 @@ export default function ProductDetail() {
           <div className="grid sm:grid-cols-3 gap-3 mb-8 text-sm">
             {[
               { icon: ShieldCheck, text: "Fraud-screened checkout" },
-              { icon: Truck, text: `Free shipping over ${formatPKR(FREE_SHIPPING_THRESHOLD)}` },
-              { icon: Wallet, text: "Easypaisa, JazzCash, COD" },
+              { icon: Truck, text: `Free shipping over ${formatPKR(pricingRules.freeShippingThreshold)}` },
+              { icon: Wallet, text: "Cards, Easypaisa, JazzCash, COD" },
             ].map(({ icon: Icon, text }) => (
               <div key={text} className="flex items-center gap-2.5 rounded-xl bg-petal px-4 py-3">
                 <Icon size={17} className="text-berry-500 shrink-0" />
@@ -299,10 +311,21 @@ export default function ProductDetail() {
             <Accordion title="Description" defaultOpen>
               <p className="whitespace-pre-line">{product.description || "No description provided."}</p>
             </Accordion>
+            {product.ingredients && (
+              <Accordion title="Ingredients">
+                <p className="whitespace-pre-line">{product.ingredients}</p>
+              </Accordion>
+            )}
+            {product.how_to_use && (
+              <Accordion title="How to use">
+                <p className="whitespace-pre-line">{product.how_to_use}</p>
+              </Accordion>
+            )}
             <Accordion title="Shipping and payment">
               <p>
-                Shipping is free on orders over {formatPKR(FREE_SHIPPING_THRESHOLD)}; below that it is a flat{" "}
-                {formatPKR(SHIPPING_FEE)}. You can pay with Easypaisa, JazzCash, card or cash on delivery.
+                Shipping is free on orders over {formatPKR(pricingRules.freeShippingThreshold)}; below that it is a flat{" "}
+                {formatPKR(pricingRules.shippingFee)}. You can pay with a Pakistani debit/credit card, Easypaisa, JazzCash or
+                cash on delivery.
               </p>
             </Accordion>
             <Accordion title="Sold by">

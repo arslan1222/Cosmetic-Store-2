@@ -14,6 +14,8 @@ const emptyForm = {
   discount_percent: 0,
   stock_quantity: 0,
   description: "",
+  ingredients: "",
+  how_to_use: "",
 };
 
 function resolveImage(url) {
@@ -75,6 +77,8 @@ export default function VendorProducts({ store }) {
       discount_percent: p.discount_percent,
       stock_quantity: p.stock_quantity,
       description: p.description || "",
+      ingredients: p.ingredients || "",
+      how_to_use: p.how_to_use || "",
     });
     setEditingId(p.id);
     setGalleryImages(p.images || []);
@@ -336,6 +340,22 @@ export default function VendorProducts({ store }) {
             value={form.description}
             onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))}
           />
+          <div className="grid sm:grid-cols-2 gap-4">
+            <TextArea
+              label="Ingredients (optional)"
+              rows={3}
+              value={form.ingredients}
+              onChange={(e) => setForm((f) => ({ ...f, ingredients: e.target.value }))}
+              placeholder="Aqua, Glycerin, Niacinamide..."
+            />
+            <TextArea
+              label="How to use (optional)"
+              rows={3}
+              value={form.how_to_use}
+              onChange={(e) => setForm((f) => ({ ...f, how_to_use: e.target.value }))}
+              placeholder="Apply 2-3 drops to clean skin, morning and night."
+            />
+          </div>
 
           {/* ---- Product photos ---- */}
           <div>

@@ -6,7 +6,7 @@ from flask_login import login_required, current_user
 
 from app.extensions import db, mail
 from app.models import (
-    Order, OrderItem, CartItem, Product, FraudCheck, Notification,
+    Order, OrderItem, CartItem, Product, FraudCheck, Notification, User,
     OrderStatusEnum, PaymentMethodEnum, RoleEnum, PaymentTransaction, PaymentTxnStatusEnum,
     StoreStatusEnum,
 )
@@ -20,8 +20,14 @@ orders_bp = Blueprint("orders", __name__, url_prefix="/api/orders")
 
 # Maps our checkout payment method to a PaySim-style transaction "type",
 # which is the categorical feature the fraud model was trained on.
+# Mapping of checkout payment methods onto PaySim transaction types.
+# Funds leaving the customer's account/card for the vendor are modelled as a
+# TRANSFER. This is a deliberate choice: in the PaySim data fraud occurs ONLY
+# in TRANSFER and CASH_OUT rows (PAYMENT rows are never fraudulent), so mapping
+# cards to PAYMENT would make the model blind to every card order.
+# COD moves no money online, so it is screened by the rule layer only.
 PAYMENT_TO_TXN_TYPE = {
-    PaymentMethodEnum.CARD: "PAYMENT",
+    PaymentMethodEnum.CARD: "TRANSFER",
     PaymentMethodEnum.EASYPAISA: "TRANSFER",
     PaymentMethodEnum.JAZZCASH: "TRANSFER",
     PaymentMethodEnum.COD: "DEBIT",
@@ -81,22 +87,50 @@ def _consume_verified_transaction(payment_method_enum, user_id, transaction_ref,
     return txn, None
 
 
+# What a brand-new customer is assumed to be able to spend in one order (PKR).
+BASELINE_ORDER_PKR = 4000.0
+
+
 def _simulate_balances(user, amount):
     """
-    The Kaggle PaySim dataset models mobile-money-style wallet balances
-    (oldbalanceOrg/newbalanceOrig for the payer, oldbalanceDest/newbalanceDest
-    for the receiver). A cosmetics storefront doesn't track literal wallet
-    balances, so we derive plausible ones from the customer's real order
-    history/account age, keeping the same signal the model was trained on:
-    genuine, established accounts carry balances comfortably above the
-    transaction amount, while new/thin accounts look "tight" relative to it.
-    """
-    established_factor = min(5.0, 1.0 + effective_account_age_days(user) / 90.0)
-    old_balance_org = round(max(amount * 1.05, amount * established_factor), 2)
-    new_balance_org = round(max(0.0, old_balance_org - amount), 2)
+    The fraud model was trained on PaySim, which describes mobile-money
+    transfers with sender/receiver balances. A storefront has no wallet
+    balances to read, so we derive a *spending-capacity proxy* from what we
+    genuinely know about the customer:
 
-    # Vendor/platform-side "destination" balance - approximate with a
-    # stable baseline since we don't operate real merchant wallets.
+        capacity = max(largest earlier order x 1.5, baseline order) x account maturity
+
+    and use it as the sender's "old balance". A routine order leaves most of that
+    capacity untouched; an order far above what this account has ever done
+    exhausts it, which produces the same "balance drained / books don't add up"
+    pattern the model learned to associate with fraud in PaySim. The proxy does
+    not depend on the order amount itself, so an unusually large order can
+    actually look unusual (earlier versions always derived the balance from
+    the amount, which made every order look perfectly normal).
+
+    Limitation (state it in the report): this is a proxy, not a real balance.
+    """
+    maturity = min(5.0, 1.0 + effective_account_age_days(user) / 90.0)
+    largest_before = (
+        db.session.query(db.func.max(Order.grand_total))
+        .filter(
+            Order.customer_id == user.id,
+            Order.status.in_([OrderStatusEnum.CONFIRMED, OrderStatusEnum.SHIPPED, OrderStatusEnum.DELIVERED]),
+        )
+        .scalar()
+    ) or 0
+
+    capacity = max(float(largest_before) * 1.5, BASELINE_ORDER_PKR) * maturity
+
+    # The customer must have at least `amount` for the payment to go through.
+    # If the order is within their usual capacity there is plenty of headroom
+    # left afterwards; if it exceeds it, the order uses up everything they
+    # have -- the "account emptied by the transaction" signature (new balance 0,
+    # old balance == amount) that characterises fraud in PaySim.
+    old_balance_org = round(max(capacity, amount), 2)
+    new_balance_org = round(old_balance_org - amount, 2)
+
+    # Receiving side (platform/vendor): modelled as a normal, consistent credit.
     old_balance_dest = round(amount * 3.0, 2)
     new_balance_dest = round(old_balance_dest + amount, 2)
 
@@ -154,8 +188,9 @@ def checkout():
             return api_response(False, f"Insufficient stock for '{product.name}'.", status=400)
         subtotal += product.final_price * ci.quantity
 
-    shipping_fee = 0.0 if subtotal >= 5000 else 150.0
-    tax_total = round(subtotal * 0.0, 2)  # no sales tax modeled by default
+    cfg = current_app.config
+    shipping_fee = 0.0 if subtotal >= cfg.get("FREE_SHIPPING_THRESHOLD", 5000) else float(cfg.get("SHIPPING_FEE", 150))
+    tax_total = round(subtotal * float(cfg.get("SALES_TAX_RATE", 0.0)), 2)
     grand_total = round(subtotal + shipping_fee + tax_total, 2)
 
     # ---- Payment verification (closes the "any made-up number works" hole) ----
@@ -287,15 +322,44 @@ def checkout():
     current_user.cart_items.delete()
     db.session.commit()
 
-    _send_email_safe(
-        subject=f"CosmoStore - Order {order.order_number}",
-        recipient=current_user.email,
-        body=(
-            f"Hi {current_user.full_name},\n\n"
-            f"Your order {order.order_number} (PKR {grand_total:,.2f}) status: {order.status.value}.\n"
-            f"Thank you for shopping with CosmoStore."
-        ),
-    )
+    if is_flagged:
+        # Customer: reassure, don't reveal why (that would help a fraudster).
+        _send_email_safe(
+            subject=f"CosmoStore - Order {order.order_number} is under review",
+            recipient=current_user.email,
+            body=(
+                f"Hi {current_user.full_name},\n\n"
+                f"We received your order {order.order_number} (PKR {grand_total:,.2f}). "
+                f"As a routine security check it is being reviewed by our team and we will "
+                f"confirm it shortly. You don't need to do anything.\n\n"
+                f"Thank you for shopping with CosmoStore."
+            ),
+        )
+        # Admins: the details they need to act (fraud module -> admin review).
+        reasons = "\n".join(f"  - {f['label']} ({f['severity']})" for f in verdict["factors"]) or "  - (none recorded)"
+        for admin in User.query.filter_by(role=RoleEnum.ADMIN, is_active_account=True).all():
+            _send_email_safe(
+                subject=f"[CosmoStore] Order {order.order_number} held for fraud review",
+                recipient=admin.email,
+                body=(
+                    f"Order {order.order_number} was held by fraud screening.\n\n"
+                    f"Customer : {current_user.full_name} <{current_user.email}>\n"
+                    f"Amount   : PKR {grand_total:,.2f} via {payment_method}\n"
+                    f"Risk     : {verdict['risk_level']} (flagged by {verdict['flag_source']})\n"
+                    f"Reasons  :\n{reasons}\n\n"
+                    f"Approve or reject it in Admin > Fraud review center."
+                ),
+            )
+    else:
+        _send_email_safe(
+            subject=f"CosmoStore - Order {order.order_number}",
+            recipient=current_user.email,
+            body=(
+                f"Hi {current_user.full_name},\n\n"
+                f"Your order {order.order_number} (PKR {grand_total:,.2f}) status: {order.status.value}.\n"
+                f"Thank you for shopping with CosmoStore."
+            ),
+        )
 
     return api_response(
         True,

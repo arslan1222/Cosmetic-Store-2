@@ -2,6 +2,7 @@ import { Routes, Route } from "react-router-dom";
 import { AuthProvider } from "./context/AuthContext";
 import { CartProvider } from "./context/CartContext";
 import { ToastProvider } from "./context/ToastContext";
+import { WishlistProvider } from "./context/WishlistContext";
 import Layout from "./components/Layout";
 import { RequireAuth, CustomerOnly } from "./components/RequireAuth";
 
@@ -17,6 +18,7 @@ import Login from "./pages/Login";
 import Register from "./pages/Register";
 import OrderHistory from "./pages/OrderHistory";
 import Profile from "./pages/Profile";
+import Wishlist from "./pages/Wishlist";
 import NotFound from "./pages/NotFound";
 
 import VendorDashboard from "./pages/vendor/VendorDashboard";
@@ -26,6 +28,7 @@ export default function App() {
   return (
     <AuthProvider>
       <ToastProvider>
+        <WishlistProvider>
         <CartProvider>
           <Layout>
             <Routes>
@@ -68,6 +71,15 @@ export default function App() {
                 }
               />
 
+              <Route
+                path="/account/wishlist"
+                element={
+                  <RequireAuth roles={["customer"]}>
+                    <Wishlist />
+                  </RequireAuth>
+                }
+              />
+
               {/* Account settings: fine for any logged-in role */}
               <Route
                 path="/account/profile"
@@ -100,6 +112,7 @@ export default function App() {
             </Routes>
           </Layout>
         </CartProvider>
+        </WishlistProvider>
       </ToastProvider>
     </AuthProvider>
   );

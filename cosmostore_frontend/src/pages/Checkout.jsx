@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { CreditCard, Smartphone, Banknote, ShieldCheck, Loader2, CheckCircle2, KeyRound } from "lucide-react";
 import { useCart } from "../context/CartContext";
 import { useAuth } from "../context/AuthContext";
@@ -8,9 +8,14 @@ import { ordersApi, paymentsApi } from "../api/endpoints";
 import { formatPKR } from "../utils/format";
 import { Button, Input } from "../components/ui";
 import FraudCheckOverlay from "../components/FraudCheckOverlay";
+import usePricing from "../hooks/usePricing";
+
+// Shipping/address typed before the customer is sent to the card gateway's page;
+// restored when they come back (a full page load wipes React state).
+const DRAFT_KEY = "cs_checkout_draft";
 
 const METHODS = [
-  { id: "card", label: "Credit / Debit Card", icon: CreditCard },
+  { id: "card", label: "Debit / Credit Card (Pakistan)", icon: CreditCard },
   { id: "easypaisa", label: "Easypaisa", icon: Smartphone },
   { id: "jazzcash", label: "JazzCash", icon: Smartphone },
   { id: "cod", label: "Cash on Delivery", icon: Banknote },
@@ -27,23 +32,28 @@ const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
  * this is just so the person can't even try to skip the step.
  */
 const initialPaymentState = {
-  phase: "idle", // idle | sending | awaiting_otp | verifying | verified | failed
+  phase: "idle", // idle | sending | awaiting_otp | verifying | redirecting | verified | failed
   transactionRef: null,
+  method: null, // which method + amount a "verified" payment was made for
+  amount: null,
   debugOtp: null, // only ever set in simulator mode
   otp: "",
   error: null,
 };
 
 export default function Checkout() {
-  const { items, subtotal, clearCart } = useCart();
+  const { items, subtotal, clearCart, loaded: cartLoaded } = useCart();
   const { user } = useAuth();
   const toast = useToast();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const pricing = usePricing();
 
   const [address, setAddress] = useState(user?.address || "");
   const [city, setCity] = useState(user?.city || "");
   const [method, setMethod] = useState("card");
   const [mobile, setMobile] = useState("");
+  const [cnicLast6, setCnicLast6] = useState("");
   const [cardNumber, setCardNumber] = useState("");
   const [cardExpiry, setCardExpiry] = useState(""); // MM/YY
   const [cardCvv, setCardCvv] = useState("");
@@ -52,20 +62,15 @@ export default function Checkout() {
 
   const [gatewayConfig, setGatewayConfig] = useState(null);
   const [payment, setPayment] = useState(initialPaymentState);
-
-  // ---- Stripe (only loaded if the backend reports a live publishable key) ----
-  const stripeRef = useRef(null);
-  const cardElementRef = useRef(null);
-  const [stripeReady, setStripeReady] = useState(false);
-  const cardMountRef = useRef(null);
+  // True while we're coming back from the card gateway's page and confirming with the server.
+  const [returningFromCard, setReturningFromCard] = useState(() => searchParams.has("card"));
+  const handledReturn = useRef(false); // the return handler must run exactly once (React dev mode runs effects twice)
 
   const discountTotal = items.reduce(
     (sum, item) => sum + (Number(item.product.price) - Number(item.product.final_price)) * item.quantity,
     0
   );
-  const taxTotal = 0;
-  const shippingFee = subtotal >= 5000 || subtotal === 0 ? 0 : 150;
-  const total = subtotal + shippingFee + taxTotal;
+  const { shipping: shippingFee, tax: taxTotal, total } = pricing.totals(subtotal);
 
   useEffect(() => {
     paymentsApi.config().then((res) => setGatewayConfig(res.data.data)).catch(() => {});
@@ -73,50 +78,81 @@ export default function Checkout() {
 
   // Reset payment verification whenever the method or amount changes -- a
   // transaction verified for one amount/method must never silently carry
-  // over to another.
+  // over to another. (A verified payment for exactly this method + amount is kept.)
   useEffect(() => {
-    setPayment(initialPaymentState);
+    setPayment((p) =>
+      p.phase === "verified" && p.method === method && Math.abs((p.amount ?? -1) - total) < 0.01
+        ? p
+        : initialPaymentState
+    );
   }, [method, total]);
 
-  // Load Stripe.js and mount Elements only for a live-configured card gateway.
+  // Coming back from the card gateway: ask OUR server whether it recorded the
+  // payment (it only does so after verifying Safepay's signature), rather than
+  // trusting anything in the URL.
   useEffect(() => {
-    if (method !== "card" || !gatewayConfig?.card_live || !gatewayConfig?.stripe_publishable_key) {
-      setStripeReady(false);
+    const result = searchParams.get("card");
+    if (!result || handledReturn.current) return;
+    handledReturn.current = true;
+    const ref = searchParams.get("ref");
+
+    let draft = null;
+    try {
+      draft = JSON.parse(sessionStorage.getItem(DRAFT_KEY));
+    } catch {
+      /* ignore */
+    }
+    if (draft) {
+      setAddress((a) => draft.address || a);
+      setCity((c) => draft.city || c);
+    }
+    setMethod("card");
+
+    const finish = () => {
+      setReturningFromCard(false);
+      navigate("/checkout", { replace: true }); // drop ?card=... from the URL
+    };
+
+    if (result !== "success" || !ref) {
+      toast.error(
+        result === "cancelled"
+          ? "Card payment was cancelled. You have not been charged."
+          : "We couldn't confirm your card payment. You have not been charged; please try again."
+      );
+      finish();
       return;
     }
-    let cancelled = false;
 
-    const setup = async () => {
-      if (!window.Stripe) {
-        await new Promise((resolve, reject) => {
-          const script = document.createElement("script");
-          script.src = "https://js.stripe.com/v3/";
-          script.onload = resolve;
-          script.onerror = reject;
-          document.head.appendChild(script);
-        }).catch(() => toast.error("Could not load Stripe."));
-      }
-      if (cancelled || !window.Stripe) return;
-      stripeRef.current = window.Stripe(gatewayConfig.stripe_publishable_key);
-      const elements = stripeRef.current.elements();
-      cardElementRef.current = elements.create("card");
-      if (cardMountRef.current) {
-        cardElementRef.current.mount(cardMountRef.current);
-        setStripeReady(true);
-      }
-    };
-    setup();
-
-    return () => {
-      cancelled = true;
-      if (cardElementRef.current) {
-        cardElementRef.current.unmount();
-        cardElementRef.current = null;
-      }
-    };
+    paymentsApi
+      .cardStatus(ref)
+      .then((res) => {
+        const txn = res.data.data;
+        if (txn.status !== "success") throw new Error("Payment not confirmed yet.");
+        setPayment({
+          ...initialPaymentState,
+          phase: "verified",
+          transactionRef: ref,
+          method: "card",
+          amount: Number(txn.amount),
+        });
+        toast.success("Card payment confirmed.");
+      })
+      .catch(() => toast.error("We couldn't confirm your card payment. Please try again."))
+      .finally(() => {
+        sessionStorage.removeItem(DRAFT_KEY);
+        finish();
+      });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [method, gatewayConfig]);
+  }, []);
 
+  if (returningFromCard || (!cartLoaded && items.length === 0)) {
+    return (
+      <div className="max-w-md mx-auto px-4 py-32 text-center">
+        <Loader2 className="animate-spin text-berry-500 mx-auto mb-4" />
+        <p className="text-ink/60">{returningFromCard ? "Confirming your card payment..." : "Loading checkout..."}</p>
+      </div>
+    );
+  }
   if (items.length === 0) {
     navigate("/cart");
     return null;
@@ -149,14 +185,12 @@ export default function Checkout() {
     }
   };
 
-  const [cnicLast6, setCnicLast6] = useState("");
-
   const confirmWalletOtp = async () => {
     setPayment((p) => ({ ...p, phase: "verifying", error: null }));
     try {
       const verifyFn = method === "easypaisa" ? paymentsApi.easypaisaVerify : paymentsApi.jazzcashVerify;
       await verifyFn({ transaction_ref: payment.transactionRef, otp: payment.otp });
-      setPayment((p) => ({ ...p, phase: "verified" }));
+      setPayment((p) => ({ ...p, phase: "verified", method, amount: total }));
       toast.success("Payment confirmed.");
     } catch (err) {
       const msg = err.response?.data?.message || err.message;
@@ -165,7 +199,27 @@ export default function Checkout() {
   };
 
   // ------------------------------------------------------------- Card flow
-  const verifyCardSimulated = async () => {
+  // LIVE: send the customer to the gateway's own secure page. We never see the card.
+  const payWithCardLive = async () => {
+    if (!address || !city) {
+      toast.error("Please fill in your shipping address and city first.");
+      return;
+    }
+    setPayment({ ...initialPaymentState, phase: "redirecting" });
+    try {
+      const res = await paymentsApi.cardInitiate({ amount: total });
+      const { checkout_url } = res.data.data;
+      if (!checkout_url) throw new Error("The card gateway did not return a payment page.");
+      sessionStorage.setItem(DRAFT_KEY, JSON.stringify({ address, city }));
+      window.location.assign(checkout_url);
+    } catch (err) {
+      const msg = err.response?.data?.message || err.message;
+      setPayment({ ...initialPaymentState, phase: "failed", error: msg });
+    }
+  };
+
+  // DEMO (no merchant keys): validate a demo card on our server. Nothing is charged or stored.
+  const verifyCardDemo = async () => {
     const digitsOnly = cardNumber.replace(/\s/g, "");
     const [mm, yy] = cardExpiry.split("/").map((s) => s?.trim());
     if (digitsOnly.length < 12) {
@@ -183,29 +237,8 @@ export default function Checkout() {
         exp_year: Number(yy?.length === 2 ? `20${yy}` : yy),
         cvv: cardCvv,
       });
-      setPayment({ ...initialPaymentState, phase: "verified", transactionRef: txnRef });
-      toast.success("Card verified.");
-    } catch (err) {
-      const msg = err.response?.data?.message || err.message;
-      setPayment({ ...initialPaymentState, phase: "failed", error: msg });
-    }
-  };
-
-  const verifyCardStripe = async () => {
-    setPayment({ ...initialPaymentState, phase: "verifying" });
-    try {
-      const initRes = await paymentsApi.cardInitiate({ amount: total });
-      const { transaction_ref, client_secret } = initRes.data.data;
-
-      const { error, paymentIntent } = await stripeRef.current.confirmCardPayment(client_secret, {
-        payment_method: { card: cardElementRef.current },
-      });
-      if (error) throw new Error(error.message);
-      if (paymentIntent.status !== "succeeded") throw new Error(`Payment status: ${paymentIntent.status}`);
-
-      await paymentsApi.cardConfirm({ transaction_ref });
-      setPayment({ ...initialPaymentState, phase: "verified", transactionRef: transaction_ref });
-      toast.success("Card charged.");
+      setPayment({ ...initialPaymentState, phase: "verified", transactionRef: txnRef, method: "card", amount: total });
+      toast.success("Demo card accepted.");
     } catch (err) {
       const msg = err.response?.data?.message || err.message;
       setPayment({ ...initialPaymentState, phase: "failed", error: msg });
@@ -306,29 +339,34 @@ export default function Checkout() {
 
             {!gatewayConfig?.[`${method}_live`] && method !== "cod" && (
               <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 mb-4">
-                Simulator mode: no live merchant account is configured for this gateway, so a local OTP/validation
-                check stands in for the real one. Add credentials to .env to switch to a real sandbox.
+                Demo mode: no live merchant account is configured for this gateway, so a local check stands in for the
+                real one. Add the gateway's credentials to the backend environment to switch to a real sandbox.
               </p>
             )}
 
-            {/* ---- Card ---- */}
+            {/* ---- Card (live): hosted by the Pakistani gateway ---- */}
             {method === "card" && gatewayConfig?.card_live && (
               <div className="space-y-3">
-                <label className="block text-sm font-medium text-ink/80">Card details</label>
-                <div ref={cardMountRef} className="border border-ink/15 rounded-xl px-3 py-3 bg-white" />
+                <div className="rounded-xl bg-petal px-4 py-3 text-sm text-ink/75 leading-relaxed">
+                  You'll enter your card on <b>{gatewayConfig.card_provider}'s secure payment page</b> (Visa, Mastercard,
+                  UnionPay and PayPak cards). Your card details never reach CosmoStore.
+                  {gatewayConfig.card_environment === "sandbox" && (
+                    <span className="block text-amber-700 mt-1">Sandbox mode: use the gateway's test cards, no real money moves.</span>
+                  )}
+                </div>
                 {payment.phase !== "verified" ? (
                   <Button
                     type="button"
-                    variant="outline"
-                    onClick={verifyCardStripe}
-                    disabled={!stripeReady || payment.phase === "verifying"}
+                    variant="dark"
+                    onClick={payWithCardLive}
+                    disabled={payment.phase === "redirecting"}
                   >
-                    {payment.phase === "verifying" ? <Loader2 size={14} className="animate-spin" /> : null}
-                    Charge card
+                    {payment.phase === "redirecting" ? <Loader2 size={14} className="animate-spin" /> : <CreditCard size={15} />}
+                    {payment.phase === "redirecting" ? "Taking you to the secure page..." : `Pay ${formatPKR(total)} with card`}
                   </Button>
                 ) : (
                   <p className="flex items-center gap-1.5 text-emerald-700 text-sm">
-                    <CheckCircle2 size={15} /> Card charged successfully.
+                    <CheckCircle2 size={15} /> Card payment confirmed. Review your order below and place it.
                   </p>
                 )}
                 {payment.error && <p className="text-sm text-red-600">{payment.error}</p>}
@@ -337,6 +375,11 @@ export default function Checkout() {
 
             {method === "card" && !gatewayConfig?.card_live && (
               <div className="space-y-4">
+                <p className="text-xs text-ink/55">
+                  Demo card form: nothing is charged and the number is not stored. Try{" "}
+                  <span className="font-mono">4242 4242 4242 4242</span> (approved) or{" "}
+                  <span className="font-mono">4000 0000 0000 0002</span> (declined), any future expiry, any 3-digit CVV.
+                </p>
                 <div className="grid sm:grid-cols-2 gap-4">
                   <Input
                     label="Card number"
@@ -365,13 +408,13 @@ export default function Checkout() {
                   />
                 </div>
                 {payment.phase !== "verified" ? (
-                  <Button type="button" variant="outline" onClick={verifyCardSimulated} disabled={payment.phase === "verifying"}>
+                  <Button type="button" variant="outline" onClick={verifyCardDemo} disabled={payment.phase === "verifying"}>
                     {payment.phase === "verifying" ? <Loader2 size={14} className="animate-spin" /> : null}
                     Verify card
                   </Button>
                 ) : (
                   <p className="flex items-center gap-1.5 text-emerald-700 text-sm">
-                    <CheckCircle2 size={15} /> Card verified.
+                    <CheckCircle2 size={15} /> Demo card accepted.
                   </p>
                 )}
                 {payment.error && <p className="text-sm text-red-600">{payment.error}</p>}

@@ -281,15 +281,25 @@ class Config:
         else "https://easypay.easypaisa.com.pk",
     )
 
-    # ---- Card payments (Stripe) ----
-    # Pakistan isn't yet a Stripe-supported country for receiving payouts,
-    # so this demonstrates genuine, working card-processing mechanics
-    # (real API, real PCI-safe card entry, real test-mode charges) for the
-    # FYP; a production rollout in Pakistan would sit behind a local
-    # acquiring bank / PCI-DSS processor instead. Free test keys:
-    # https://dashboard.stripe.com/register
-    STRIPE_SECRET_KEY = os.environ.get("STRIPE_SECRET_KEY", "")
-    STRIPE_PUBLISHABLE_KEY = os.environ.get("STRIPE_PUBLISHABLE_KEY", "")
+    # ---- Card payments: Safepay (Pakistani debit/credit cards, settles in PKR) ----
+    # Get sandbox keys from https://getsafepay.com (Merchant dashboard > Developers).
+    # With no keys set, checkout runs in clearly-labelled DEMO mode.
+    SAFEPAY_API_KEY = os.environ.get("SAFEPAY_API_KEY", "")
+    SAFEPAY_SECRET_KEY = os.environ.get("SAFEPAY_SECRET_KEY", "")        # verifies the signed redirect
+    SAFEPAY_WEBHOOK_SECRET = os.environ.get("SAFEPAY_WEBHOOK_SECRET", "")  # verifies webhooks
+    SAFEPAY_ENV = os.environ.get("SAFEPAY_ENV", "sandbox")  # sandbox | production
+    SAFEPAY_BASE_URL = os.environ.get("SAFEPAY_BASE_URL", "")  # testing only: point at a mock server
+
+    # Public URLs, used for the gateway's return/cancel redirects.
+    # BACKEND_PUBLIC_URL must be reachable from the customer's browser
+    # (on Render: https://<your-backend>.onrender.com).
+    BACKEND_PUBLIC_URL = os.environ.get("BACKEND_PUBLIC_URL", "http://localhost:5000")
+    FRONTEND_URL = os.environ.get("FRONTEND_URL", "http://localhost:5173")
+
+    # ---- Pricing rules (single source of truth for cart, checkout and orders) ----
+    SALES_TAX_RATE = float(os.environ.get("SALES_TAX_RATE", 0.0))   # e.g. 0.18 for 18% GST
+    FREE_SHIPPING_THRESHOLD = float(os.environ.get("FREE_SHIPPING_THRESHOLD", 5000))
+    SHIPPING_FEE = float(os.environ.get("SHIPPING_FEE", 150))
 
     PAYMENT_OTP_TTL_MINUTES = 5
 

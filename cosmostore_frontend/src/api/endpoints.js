@@ -14,6 +14,7 @@ export const authApi = {
 
 // ---------------- Catalog ----------------
 export const catalogApi = {
+  brands: () => api.get("/products/brands"),
   categories: () => api.get("/categories"),
   createCategory: (payload) => api.post("/categories", payload),
   deleteCategory: (id) => api.delete(`/categories/${id}`),
@@ -62,7 +63,14 @@ export const ordersApi = {
   vendorOrders: () => api.get("/orders/vendor/orders"),
 };
 
-// ---------------- Payments (mock gateways) ----------------
+// ---------------- Wishlist (saved items) ----------------
+export const wishlistApi = {
+  list: () => api.get("/wishlist"),
+  add: (product_id) => api.post("/wishlist", { product_id }),
+  remove: (product_id) => api.delete(`/wishlist/${product_id}`),
+};
+
+// ---------------- Payments (JazzCash, Easypaisa, Pakistani cards via Safepay) ----------------
 export const paymentsApi = {
   config: () => api.get("/payments/config"),
 
@@ -74,6 +82,8 @@ export const paymentsApi = {
 
   cardInitiate: (payload) => api.post("/payments/card/initiate", payload),
   cardConfirm: (payload) => api.post("/payments/card/confirm", payload),
+  cardStatus: (ref) => api.get(`/payments/card/status/${ref}`),
+  pricing: () => api.get("/payments/pricing"),
 };
 
 // ---------------- Admin ----------------

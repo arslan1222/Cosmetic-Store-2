@@ -1,7 +1,7 @@
 import { Link } from "react-router-dom";
 import { Loader2, Star, ChevronRight, Truck } from "lucide-react";
 import { STATUS_STYLES, statusLabel, formatPKR } from "../utils/format";
-import { FREE_SHIPPING_THRESHOLD } from "../utils/image";
+import usePricing from "../hooks/usePricing";
 
 export function Spinner({ size = 20, className = "" }) {
   return <Loader2 size={size} className={`animate-spin text-berry-500 ${className}`} />;
@@ -145,9 +145,10 @@ export function Rating({ value = 0, count, size = 13, showCount = true }) {
 
 // Progress toward free shipping. Used in the cart page and the slide-out cart.
 export function FreeShippingBar({ subtotal, className = "" }) {
+  const { freeShippingThreshold } = usePricing();
   if (!subtotal) return null;
-  const remaining = Math.max(FREE_SHIPPING_THRESHOLD - subtotal, 0);
-  const pct = Math.min((subtotal / FREE_SHIPPING_THRESHOLD) * 100, 100);
+  const remaining = Math.max(freeShippingThreshold - subtotal, 0);
+  const pct = Math.min((subtotal / freeShippingThreshold) * 100, 100);
   return (
     <div className={className}>
       <p className="flex items-center gap-2 text-sm mb-2">

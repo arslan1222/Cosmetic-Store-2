@@ -5,7 +5,8 @@ import { useAuth } from "../context/AuthContext";
 import { useToast } from "../context/ToastContext";
 import { formatPKR } from "../utils/format";
 import { Button, EmptyState, PageSpinner, Breadcrumbs, FreeShippingBar } from "../components/ui";
-import { resolveImage, FREE_SHIPPING_THRESHOLD, SHIPPING_FEE } from "../utils/image";
+import { resolveImage } from "../utils/image";
+import usePricing from "../hooks/usePricing";
 
 export default function Cart() {
   const { items, subtotal, loading, updateQuantity, removeItem } = useCart();
@@ -13,13 +14,12 @@ export default function Cart() {
   const toast = useToast();
   const navigate = useNavigate();
 
-  const shippingFee = subtotal >= FREE_SHIPPING_THRESHOLD || subtotal === 0 ? 0 : SHIPPING_FEE;
+  const pricing = usePricing();
   const discountTotal = items.reduce(
     (sum, item) => sum + (Number(item.product.price) - Number(item.product.final_price)) * item.quantity,
     0
   );
-  const taxTotal = 0;
-  const total = subtotal + shippingFee + taxTotal;
+  const { shipping: shippingFee, tax: taxTotal, total } = pricing.totals(subtotal);
 
   if (!user) {
     return (
